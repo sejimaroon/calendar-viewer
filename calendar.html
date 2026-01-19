@@ -1,26 +1,42 @@
 <!DOCTYPE html>
 <html lang="ja">
-
 <head>
   <meta charset="UTF-8" />
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: sans-serif;
-    }
-
-    #calendar {
-      max-width: 100%;
+    body { margin: 0; padding: 20px; font-family: sans-serif; }
+    #calendar { max-width: 900px; margin: 0 auto; }
+    #timeslots, #reservationForm {
+      max-width: 600px;
       margin: 20px auto;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin: 5px;
+      padding: 5px 10px;
+    }
+    input, textarea {
+      width: 100%;
+      margin-bottom: 10px;
     }
   </style>
 </head>
-
 <body>
   <div id="calendar"></div>
+
+  <div id="timeslots"></div>
+
+  <div id="reservationForm" style="display:none;">
+    <h3>予約フォーム</h3>
+    <p id="selectedTime"></p>
+    <input type="text" id="name" placeholder="お名前"><br>
+    <input type="email" id="email" placeholder="メールアドレス"><br>
+    <textarea id="content" placeholder="診療内容" rows="3"></textarea><br>
+    <button onclick="submitReservation()">予約する</button>
+  </div>
+
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       const calendarEl = document.getElementById('calendar');
@@ -36,17 +52,76 @@
           center: 'title',
           right: ''
         },
-        events: function (fetchInfo, successCallback, failureCallback) {
+        events: function(fetchInfo, successCallback, failureCallback) {
           fetch('https://script.google.com/macros/s/AKfycbwSfkZDoOHDlP_WcQM05w42c8UswrpH7qE6tRlj1K3H5gYulNhJErHkzY8QPNNSF8nETg/exec?function=getEvents')
             .then(response => response.json())
             .then(data => successCallback(data))
             .catch(error => failureCallback(error));
+        },
+        dateClick: function(info) {
+          const clickedDate = info.dateStr;
+          const timeslotsEl = document.getElementById('timeslots');
+          timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>読み込み中...`;
+
+          fetch('https://script.google.com/macros/s/AKfycbwSfkZDoOHDlP_WcQM05w42c8UswrpH7qE6tRlj1K3H5gYulNhJErHkzY8QPNNSF8nETg/exec?function=getEvents')
+            .then(response => response.json())
+            .then(data => {
+              const slots = data.filter(event => event.start.startsWith(clickedDate));
+              if (slots.length === 0) {
+                timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>空きがありません`;
+                return;
+              }
+
+              const buttons = slots.map(slot => {
+                const time = new Date(slot.start).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                return `<button onclick="selectSlot('${slot.start}')">${time}</button>`;
+              }).join(' ');
+
+              timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>${buttons}`;
+            });
         }
       });
 
       calendar.render();
     });
+
+    function selectSlot(isoTime) {
+      const time = new Date(isoTime).toLocaleString('ja-JP');
+      document.getElementById('selectedTime').textContent = `選択中の時間: ${time}`;
+      document.getElementById('reservationForm').style.display = 'block';
+      document.getElementById('reservationForm').dataset.datetime = isoTime;
+    }
+
+    function submitReservation() {
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('email').value;
+      const content = document.getElementById('content').value;
+      const datetime = document.getElementById('reservationForm').dataset.datetime;
+
+      if (!name || !email || !datetime) {
+        alert("すべての項目を入力してください！");
+        return;
+      }
+
+      fetch('https://script.google.com/macros/s/AKfycbwSfkZDoOHDlP_WcQM05w42c8UswrpH7qE6tRlj1K3H5gYulNhJErHkzY8QPNNSF8nETg/exec', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, content, datetime }),
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          alert("予約が完了しました！");
+          location.reload();
+        } else {
+          alert("予約に失敗しました。");
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert("通信エラーが発生しました。");
+      });
+    }
   </script>
 </body>
-
 </html>
