@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+
   <style>
     body { margin: 0; padding: 20px; font-family: sans-serif; }
     #calendar { max-width: 900px; margin: 0 auto; }
@@ -13,130 +14,99 @@
       padding: 10px;
       border: 1px solid #ccc;
     }
-    button {
-      margin: 5px;
-      padding: 5px 10px;
-    }
-    input, textarea {
-      width: 100%;
-      margin-bottom: 10px;
-    }
+    button { margin: 5px; padding: 5px 10px; }
+    input, textarea { width: 100%; margin-bottom: 10px; }
   </style>
 </head>
+
 <body>
   <div id="calendar"></div>
-
   <div id="timeslots"></div>
 
   <div id="reservationForm" style="display:none;">
     <h3>予約フォーム</h3>
     <p id="selectedTime"></p>
-    <input type="text" id="name" placeholder="お名前"><br>
-    <input type="email" id="email" placeholder="メールアドレス"><br>
-    <textarea id="content" placeholder="診療内容" rows="3"></textarea><br>
+    <input type="text" id="name" placeholder="お名前">
+    <input type="email" id="email" placeholder="メールアドレス">
+    <textarea id="content" placeholder="診療内容"></textarea>
     <button onclick="submitReservation()">予約する</button>
   </div>
 
-  <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwSfkZDoOHDlP_WcQM05w42c8UswrpH7qE6tRlj1K3H5gYulNhJErHkzY8QPNNSF8nETg/exec";
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwSfkZDoOHDlP_WcQM05w42c8UswrpH7qE6tRlj1K3H5gYulNhJErHkzY8QPNNSF8nETg/exec";
 
-    document.addEventListener('DOMContentLoaded', function () {
-      const calendarEl = document.getElementById('calendar');
+document.addEventListener("DOMContentLoaded", function () {
+  const calendarEl = document.getElementById("calendar");
 
-      const calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        locale: 'ja',
-        height: 'auto',
-        eventDisplay: 'block',
-        eventColor: '#00bcd4',
-        headerToolbar: {
-          left: 'prev,next today',
-          center: 'title',
-          right: ''
-        },
-        events: function(fetchInfo, successCallback, failureCallback) {
-          fetch(`${GAS_URL}?function=getEvents`)
-            .then(response => response.json())
-            .then(data => successCallback(data))
-            .catch(error => {
-              console.error("イベント取得エラー:", error);
-              failureCallback(error);
-            });
-        },
-        dateClick: function(info) {
-          const clickedDate = info.dateStr;
-          const timeslotsEl = document.getElementById('timeslots');
-          timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>読み込み中...`;
+  const calendar = new FullCalendar.Calendar(calendarEl, {
+    timeZone: "Asia/Tokyo",
+    locale: "ja",
+    initialView: "dayGridMonth",
+    height: "auto",
+    headerToolbar: {
+      left: "prev,next today",
+      center: "title",
+      right: ""
+    },
+    events: function(info, success, failure) {
+      fetch(`${GAS_URL}?function=getEvents`)
+        .then(res => res.json())
+        .then(data => success(data))
+        .catch(err => failure(err));
+    },
+    dateClick: function(info) {
+      const dateStr = info.dateStr;
+      const box = document.getElementById("timeslots");
+      box.innerHTML = `<strong>${dateStr} の空き時間</strong><br>`;
 
-          fetch(`${GAS_URL}?function=getEvents`)
-            .then(response => response.json())
-            .then(data => {
-              const slots = data.filter(event => {
-                const eventDate = new Date(event.start);
-                const jstDate = new Date(eventDate.getTime() + (9 * 60 * 60 * 1000));
-                const eventDateStr = jstDate.toISOString().slice(0, 10);
-                return eventDateStr === clickedDate;
-              });
+      fetch(`${GAS_URL}?function=getEvents`)
+        .then(res => res.json())
+        .then(events => {
+          const slots = events.filter(e => e.start.startsWith(dateStr));
+          if (slots.length === 0) {
+            box.innerHTML += "空きなし";
+            return;
+          }
 
-              if (slots.length === 0) {
-                timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>空きがありません`;
-                return;
-              }
-
-              const buttons = slots.map(slot => {
-                const time = new Date(slot.start).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-                return `<button onclick="selectSlot('${slot.start}')">${time}</button>`;
-              }).join(' ');
-
-              timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>${buttons}`;
-            })
-            .catch(error => {
-              console.error("空き時間取得エラー:", error);
-              timeslotsEl.innerHTML = "空き時間の取得に失敗しました。";
-            });
-        }
-      });
-
-      calendar.render();
-    });
-
-    function selectSlot(isoTime) {
-      const time = new Date(isoTime).toLocaleString('ja-JP');
-      document.getElementById('selectedTime').textContent = `選択中の時間: ${time}`;
-      document.getElementById('reservationForm').style.display = 'block';
-      document.getElementById('reservationForm').dataset.datetime = isoTime;
+          box.innerHTML += slots.map(s => {
+            const time = s.start.slice(11, 16);
+            return `<button onclick="selectSlot('${s.start}')">${time}</button>`;
+          }).join("");
+        });
     }
+  });
 
-    function submitReservation() {
-      const name = document.getElementById('name').value;
-      const email = document.getElementById('email').value;
-      const content = document.getElementById('content').value;
-      const datetime = document.getElementById('reservationForm').dataset.datetime;
+  calendar.render();
+});
 
-      if (!name || !email || !datetime) {
-        alert("すべての項目を入力してください！");
-        return;
-      }
+function selectSlot(datetime) {
+  document.getElementById("reservationForm").style.display = "block";
+  document.getElementById("selectedTime").textContent = `選択中：${datetime.replace("T", " ")}`;
+  document.getElementById("reservationForm").dataset.datetime = datetime;
+}
 
-      fetch(GAS_URL, {
-        method: 'POST',
-        body: JSON.stringify({ name, email, content, datetime }),
-        headers: { 'Content-Type': 'application/json' }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === "success") {
-          alert("予約が完了しました！");
-          location.reload();
-        } else {
-          alert("予約に失敗しました。");
-        }
-      })
-      .catch(err => {
-        console.error("予約送信エラー:", err);
-        alert("通信エラーが発生しました。");
-      });
-    }
-  </script>
+function submitReservation() {
+  const name = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+  const content = document.getElementById("content").value;
+  const datetime = document.getElementById("reservationForm").dataset.datetime;
+
+  if (!name || !email || !datetime) {
+    alert("必須項目を入力してください");
+    return;
+  }
+
+  fetch(GAS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, content, datetime })
+  })
+  .then(res => res.json())
+  .then(() => {
+    alert("予約完了");
+    location.reload();
+  });
+}
+</script>
 </body>
 </html>
