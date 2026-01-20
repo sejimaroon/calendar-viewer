@@ -71,7 +71,13 @@
           fetch(`${GAS_URL}?function=getEvents`)
             .then(response => response.json())
             .then(data => {
-              const slots = data.filter(event => event.start.slice(0, 10) === clickedDate);
+              const slots = data.filter(event => {
+                const eventDate = new Date(event.start);
+                const jstDate = new Date(eventDate.getTime() + (9 * 60 * 60 * 1000));
+                const eventDateStr = jstDate.toISOString().slice(0, 10);
+                return eventDateStr === clickedDate;
+              });
+
               if (slots.length === 0) {
                 timeslotsEl.innerHTML = `<strong>${clickedDate} の空き時間:</strong><br>空きがありません`;
                 return;
